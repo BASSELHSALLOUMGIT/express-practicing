@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const userSchema   = new mongoose.Schema({
     name: {
@@ -15,12 +16,35 @@ const userSchema   = new mongoose.Schema({
         required: true,
         select: false
     },
+    passwordChangedAt : {
+        type: Date
+    },
     age: {
         type: Number
     }
 },
 {
     timestamps: true
-})
+});
+
+userSchema.pre('save', async function(next) {
+    if(!this.isModified('password')) return next();
+
+    this.password = await bcrypt.hash(this.password, 12);
+
+    next();
+});
+
+userSchema.methods.correctPassword = async function(candidatePassword){
+    return await bcrypt.compare(candidatePassword, this.password);
+};
+
+userSchema.methods.changedPasswordAfter = function(jwtTime) {
+    if(this.passwordChangedAt){
+        const passwordTime = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+        return jwtTime < passwordTime;
+    }
+    return false;
+};
 
 module.exports = mongoose.model('User', userSchema);
