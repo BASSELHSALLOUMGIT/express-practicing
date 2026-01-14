@@ -1,9 +1,16 @@
 const User = require('../models/User');
 const AppError = require('../utils/AppError');
+const APIFeatures = require('../utils/APIFeatures');
 
 exports.getUsers = async(req, res, next) => {
     try {
-        const users = await User.find();
+        const features = new APIFeatures(User.find(), req.query)
+                                        .filter()
+                                        .sort()
+                                        .limitedFields()
+                                        .paginate();
+
+        const users = await features.query;
         res.status(200).json({
             status: 'success',
             result: users.length,
