@@ -37,23 +37,56 @@ exports.login = async(req, res, next) => {
     }
 };
 
-exports.refreshToken = async(req, res, next) => {
-    try {
-        const token = req.cookies.refreshToken;
-        if(!token) return next(new AppError('Refresh token missing', 401));
+exports.refreshToken = async (req, res, next) => {
+  try {
+    const oldToken = req.cookies.refreshToken;
+    if (!oldToken)
+      return next(new AppError('Refresh token missing', 401));
 
-        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-        const user = await User.findById(decoded.id).select('+refreshTokens');
-        if(!user || !(user.refreshTokens.includes(token)))
-            return next(new AppError('forbidden', 403));
+    // 1. Verify old refresh token
+    const decoded = jwt.verify(
+      oldToken,
+      process.env.JWT_REFRESH_SECRET
+    );
 
-        const newAccessToken = signAccessToken(user._id);
-        res.status(200).json({ accessToken: newAccessToken });
-    }
-    catch(err){
-        next(err);
-    }
+    const user = await User
+      .findById(decoded.id)
+      .select('+refreshTokens');
+
+    if (!user || !user.refreshTokens.includes(oldToken))
+      return next(new AppError('Forbidden', 403));
+
+    // 2. REMOVE old refresh token
+    user.refreshTokens = user.refreshTokens.filter(
+      token => token !== oldToken
+    );
+
+    // 3. CREATE new tokens
+    const newAccessToken = signAccessToken(user._id);
+    const newRefreshToken = signRefreshToken(user._id);
+
+    // 4. SAVE new refresh token
+    user.refreshTokens.push(newRefreshToken);
+    await user.save({ validateBeforeSave: false });
+
+    // 5. SEND new refresh token in cookie
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    // 6. SEND new access token
+    res.status(200).json({
+      accessToken: newAccessToken
+    });
+
+  } catch (err) {
+    next(err);
+  }
 };
+
 
 exports.logout = async(req, res, next) => {
     try {
