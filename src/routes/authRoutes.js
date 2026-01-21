@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const apiLimiter = require('../middlewares/rateLimit');
 const authController = require('../controllers/authController');
 
-router.post('/login', apiLimiter, authController.login);
-router.get('/forgotPassword', apiLimiter, authController.forgotPassword);
-router.patch('/resetPassword/:token', apiLimiter, authController.resetPassword);
+router.post('/login', authController.login);
+router.get('/forgotPassword', authController.forgotPassword);
+router.patch('/resetPassword/:token', authController.resetPassword);
 
 module.exports = router;

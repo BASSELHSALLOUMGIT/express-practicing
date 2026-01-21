@@ -3,6 +3,7 @@ const app = express();
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const globalErrorHandler = require('./middlewares/globalErrorHandler');
+const cookieParser = require('cookie-parser');
 
 const helmet = require('helmet');
 const xss = require('xss-clean');
@@ -10,7 +11,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const globalRateLimiter = require('./middlewares/globalRateLimiter');
 
 app.set('trust proxy', 1);
-
+app.use(cookieParser());
 // Secure HTTP headers
 app.use(helmet());
 

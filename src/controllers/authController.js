@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const AppError = require('../utils/AppError');
-const signToken = require('../utils/signToken');
+const { signAccessToken, signrefreshToken } = require('../utils/tokens');
 const crypto = require('crypto');
 
 exports.login = async(req, res, next) => {
@@ -10,20 +10,71 @@ exports.login = async(req, res, next) => {
         if(!email || !password)
             return next(new AppError('email and password are required', 401));
 
-        const user = await User.findOne({email}).select('+password');
+        const user = await User.findOne({email}).select('+password +refreshTokens');
         if(!user || !(await user.correctPassword(password)))
             return next(new AppError('Incorrect email or password', 401));
 
-        const token = signToken(user._id);
+        const accessToken = signAccessToken(user._id);
+        const refreshToken = signRefreshToken(user._id);
+
+        user.refreshTokens.push(refreshToken);
+        await user.save({ validateBeforeSave: false });
+
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
         res.status(200).json({
             status: 'success',
-            token
+            accessToken
         });
     }
     catch(err){
         next(err);
     }
 };
+
+exports.refreshToken = async(req, res, next) => {
+    try {
+        const token = req.cookies.refreshToken;
+        if(!token) return next(new AppError('Refresh token missing', 401));
+
+        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+        const user = await User.findById(decoded.id).select('+refreshTokens');
+        if(!user || !(user.refreshTokens.includes(token)))
+            return next(new AppError('forbidden', 403));
+
+        const newAccessToken = signAccessToken(user._id);
+        res.status(200).json({ accessToken: newAccessToken });
+    }
+    catch(err){
+        next(err);
+    }
+};
+
+exports.logout = async(req, res, next) => {
+    try {
+        const token = req.cookies.refreshToken;
+        if(token) {
+            await User.findByIdAndUpdate(req.user.id, {
+                $pull: { refreshTokens: token }
+            });
+        }
+        res.clearCookie('refreshToken', {
+        httpOnly: true,
+        sameSite: 'Strict',
+        secure: process.env.NODE_ENV === 'production'
+    });
+
+    res.status(200).json({ message: 'Logged out' });
+    }
+    catch(err){
+        
+    }
+}
 
 exports.forgotPassword = async(req, res, next) => {
     try {
@@ -68,4 +119,4 @@ exports.resetPassword = async(req, res, next) => {
     catch(err){
         next(err);
     }
-}
+};
